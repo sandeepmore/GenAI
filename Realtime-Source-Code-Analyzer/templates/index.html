@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Realtime Source Code Analyzer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body>
+    <div class="page">
+      <header class="page-header">
+        <h1>Realtime Source Code Analyzer</h1>
+        <p>Point it at a GitHub repository, then ask questions about the code.</p>
+      </header>
+
+      <section class="card">
+        <h2 class="card-title">1. Ingest a repository</h2>
+        <form id="repo-form" class="repo-form" autocomplete="off">
+          <input
+            type="text"
+            id="repo-url"
+            name="question"
+            class="text-input"
+            placeholder="https://github.com/owner/repo.git"
+            required
+          >
+          <button type="submit" id="repo-submit" class="btn btn-primary">Analyze</button>
+        </form>
+        <p id="repo-status" class="status-line" role="status"></p>
+      </section>
+
+      <section class="card chat-card">
+        <h2 class="card-title">2. Ask about the code</h2>
+        <div id="chat-log" class="chat-log">
+          <div class="chat-placeholder">Ingest a repository above, then ask a question here.</div>
+        </div>
+        <form id="chat-form" class="chat-form" autocomplete="off">
+          <input
+            type="text"
+            id="chat-input"
+            name="msg"
+            class="text-input"
+            placeholder="Type your question..."
+            required
+          >
+          <button type="submit" id="chat-submit" class="btn btn-primary">Send</button>
+        </form>
+      </section>
+    </div>
+
+    <script src="{{ url_for('static', filename='jquery.min.js') }}"></script>
+    <script>
+      function escapeHtml(text) {
+        return $("<div>").text(text).html();
+      }
+
+      function scrollChatToBottom() {
+        var log = document.getElementById("chat-log");
+        log.scrollTop = log.scrollHeight;
+      }
+
+      function appendMessage(role, text) {
+        $(".chat-placeholder").remove();
+        var bubble = $("<div>").addClass("chat-message chat-message--" + role);
+        bubble.append($("<span>").addClass("chat-message-text").html(escapeHtml(text)));
+        $("#chat-log").append(bubble);
+        scrollChatToBottom();
+      }
+
+      $(document).ready(function () {
+        $("#repo-form").on("submit", function (event) {
+          event.preventDefault();
+
+          var repoUrl = $("#repo-url").val().trim();
+          if (!repoUrl) {
+            return;
+          }
+
+          $("#repo-submit").prop("disabled", true).text("Analyzing...");
+          $("#repo-status").removeClass("status-line--error").text("Cloning and indexing repository, this may take a moment...");
+
+          $.ajax({
+            type: "POST",
+            url: "/chatbot",
+            data: { question: repoUrl },
+            success: function (result) {
+              $("#repo-status").text("Repository indexed: " + result.response);
+              $("#repo-url").val("");
+            },
+            error: function () {
+              $("#repo-status").addClass("status-line--error").text("Something went wrong while indexing that repository.");
+            },
+            complete: function () {
+              $("#repo-submit").prop("disabled", false).text("Analyze");
+            }
+          });
+        });
+
+        $("#chat-form").on("submit", function (event) {
+          event.preventDefault();
+
+          var message = $("#chat-input").val().trim();
+          if (!message) {
+            return;
+          }
+
+          appendMessage("user", message);
+          $("#chat-input").val("");
+          $("#chat-submit").prop("disabled", true);
+
+          $.ajax({
+            type: "POST",
+            url: "/get",
+            data: { msg: message },
+            success: function (result) {
+              appendMessage("bot", result);
+            },
+            error: function () {
+              appendMessage("bot", "Sorry, something went wrong answering that question.");
+            },
+            complete: function () {
+              $("#chat-submit").prop("disabled", false);
+              $("#chat-input").trigger("focus");
+            }
+          });
+        });
+      });
+    </script>
+  </body>
+</html>
